@@ -7,10 +7,25 @@ const User = require("../models/user.js")
 const Agent = require("../models/agent.js")
 // router.post('/profile',(req,res)=>{
 //     const data = req.body;
-//     let s_email = session.email;
-//     await User.updateOne({ email: email},{$set:data});
+//     let s_email = req.session.email;
+//     await User.updateOne({ email: S_email},{$set:data});
 //     res.send("Profile Updated Successfully!");
 // })
+
+router.get('/session',(req,res)=>{
+    const sess = "panna3@gmail.com";
+
+    User.findOne({email : sess}).exec(function (err,user){
+        if (err){
+            // res.status(400).json({error:true})
+            console.log(err)
+        }
+        else{
+            // res.status(200).json({error:false,email: user.email, name : user.name});
+            console.log(user.name)
+        }
+    })
+})
 
 router.post('/createTicket',(req,res)=>{
     const {T_name,T_type,T_desc} = req.body;
@@ -98,12 +113,21 @@ router.post('/login', function(req, res) {
 
 //logout
 router.get('/logout',(req,res)=>{
-    req.session.destroy((err) => {
-        if(err) {
-            return console.log(err);
-        }
-        res.redirect('/login');
- });
+    const sess = req.session.email;
+    console.log(sess);
+    res.send(sess);
+//     req.session.destroy((err) => {
+//         if(err) {
+//             return console.log(err);
+//         }
+//         else{
+//             res.send("Done Session Removed");
+        
+//     }
+        
+//  });
+
 })
+
 
 module.exports  = router;
