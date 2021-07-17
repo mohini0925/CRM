@@ -5,24 +5,109 @@ const Ticket = require('../models/createticket.js');
 const router = express.Router();
 const User = require("../models/user.js")
 const Agent = require("../models/agent.js")
-// router.post('/profile',(req,res)=>{
-//     const data = req.body;
-//     let s_email = req.session.email;
-//     await User.updateOne({ email: S_email},{$set:data});
-//     res.send("Profile Updated Successfully!");
-// })
+const Response = require("../models/response.js")
 
-router.get('/session',(req,res)=>{
-    const sess = "panna3@gmail.com";
-
-    User.findOne({email : sess}).exec(function (err,user){
+router.post('/profile',async (req,res)=>{
+    const {name,phone,email,password} = req.body;
+    const s_email = req.session.email;
+    if(!name || !email || !password || !phone){
+        res.status(400).json({error:true,message : "Please fill all fields!" });
+    }else if(phone.length < 10){
+        res.status(400).json({error:true,message : "Mobile No. should contain 10 digits" });
+    }else if(password.length < 6){
+        res.status(400).json({error:true,message : "Password should contain 6 characters" });
+    }else{
+    await User.updateOne({ email: s_email},{$set:{
+        name : name,
+        phone : phone,
+        email : email,
+        password : password,
+    }}).exec(function (err,user){
         if (err){
-            // res.status(400).json({error:true})
+            res.status(400).json({error:true})
             console.log(err)
         }
         else{
-            // res.status(200).json({error:false,email: user.email, name : user.name});
+          res.status(200).json({error:false,message: "Profile Updated Successfully"});
+        }
+    });
+}})
+
+router.get('/singleticket/:id',(req,res)=>{
+    const id = req.params.id;
+    Ticket.findOne({_id : id}).exec(function(err,ticket){
+        if(err){
+            res.status(400).json({error:true})
+            console.log(err)
+        }
+        else{
+            res.status(200).json({error:false, data: ticket})
+            console.log(ticket);
+        }
+    })
+
+})
+
+router.get('/response/:id',(req,res)=>{
+    const id = req.params.id;
+    Response.find({T_id : id}).sort({R_date : 1}).exec(function(err,response){
+        if(err){
+            res.status(400).json({error:true})
+            console.log(err)
+        }
+        else{
+            res.status(200).json({error:false, data: response})
+            console.log(response);
+        }
+    })
+
+})
+
+
+
+router.get('/session',(req,res)=>{
+    const sess = req.session.email;
+    console.log(sess);
+
+    User.findOne({email : sess}).exec(function (err,user){
+        if (err){
+            res.status(400).json({error:true})
+            console.log(err)
+        }
+        else{
+            res.status(200).json({error:false,email: user.email, name : user.name});
             console.log(user.name)
+        }
+    })
+})
+
+router.get('/viewticket',(req,res)=>{
+    const sess = req.session.email;
+    console.log(sess);
+    Ticket.find({T_email : sess}).sort({T_date : -1}).exec(function(err,ticket){
+        if(err){
+            res.status(400).json({error:true})
+            console.log(err)
+        }
+        else{
+            res.status(200).json({error:false, data: ticket})
+            console.log(ticket);
+        }
+    })
+})
+
+router.get('/profile',(req,res)=>{
+    const sess = req.session.email;
+    console.log(sess);
+
+    User.findOne({email : sess}).exec(function (err,user){
+        if (err){
+            res.status(400).json({error:true})
+            console.log(err)
+        }
+        else{
+            res.status(200).json({error:false,email: user.email, name : user.name, password : user.password , phone : user.phone});
+            console.log(user.phone)
         }
     })
 })
@@ -58,6 +143,23 @@ router.post('/createTicket',(req,res)=>{
 
 })
 
+//Reponse Text
+router.post('/response',(req,res)=>{
+    const {T_id,Sender_email,R_text} = req.body;
+    if(!R_text){
+        res.status(400).json({error:true,message : "Enter some text!" });
+    }else{
+                
+                const newResponse = new Response({
+                    T_id : T_id,
+                    Sender_email : Sender_email,
+                    R_text : R_text,
+                })
+                newResponse.save();
+                res.status(200).json({error:false,message: "Response Added"});
+            
+            }
+        })
 
 //Register handle
 router.post('/register',(req,res)=>{
@@ -115,17 +217,17 @@ router.post('/login', function(req, res) {
 router.get('/logout',(req,res)=>{
     const sess = req.session.email;
     console.log(sess);
-    res.send(sess);
-//     req.session.destroy((err) => {
-//         if(err) {
-//             return console.log(err);
-//         }
-//         else{
-//             res.send("Done Session Removed");
+    req.session.destroy((err) => {
+        if(err) {
+            return console.log(err);
+        }
+        else{
+            res.status(200).json({error:false,message:"You Logged Out"});
+            console.log("Destroyed");
         
-//     }
+    }
         
-//  });
+ });
 
 })
 
