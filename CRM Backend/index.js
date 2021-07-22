@@ -1,5 +1,6 @@
 const express = require('express');
 var bodyParser = require('body-parser');
+var nodemailer = require('nodemailer');
 const router = express.Router();
 const mongoose = require('mongoose');
 var session = require('express-session');
