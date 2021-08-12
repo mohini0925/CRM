@@ -7,6 +7,25 @@ const router = express.Router();
 const User = require("../models/user.js")
 const Agent = require("../models/agent.js")
 const Response = require("../models/response.js")
+const multer = require('multer');
+
+//Setting storage
+const storage = multer.diskStorage({
+    destination(req, file, callback) {
+      callback(null,'uploads');
+    },
+    filename(req, file, callback) {
+      callback(null,Date.now() + '-' + file.originalname);
+    },
+  });
+
+
+const upload = multer({
+    storage : storage,
+    limits: { fieldSize: 5* 1024 * 1024 }
+  });
+
+
 
 var transporter = nodemailer.createTransport({
     service: 'gmail',
@@ -16,11 +35,13 @@ var transporter = nodemailer.createTransport({
     }
   });
 
+
+
 router.post('/profile',async (req,res)=>{
     const {name,phone,email,password} = req.body;
     const s_email = req.session.email;
     if(!name || !email || !password || !phone){
-        res.status(400).json({error:true,message : "Please fill all fields!" });
+        res.status(400).json({error:true,message : "Please fill all the fields" });
     }else if(phone.length < 10){
         res.status(400).json({error:true,message : "Mobile No. should contain 10 digits" });
     }else if(password.length < 6){
@@ -46,7 +67,7 @@ router.post('/Agentprofile',async (req,res)=>{
     const {name,email,password} = req.body;
     const s_email = req.session.email;
     if(!name || !email || !password){
-        res.status(400).json({error:true,message : "Please fill all fields!" });
+        res.status(400).json({error:true,message : "Please fill all the fields" });
     }else if(password.length < 6){
         res.status(400).json({error:true,message : "Password should contain 6 characters" });
     }else{
@@ -78,6 +99,7 @@ router.get('/singleticket/:id',(req,res)=>{
     })
 })
 
+
 router.get('/searchTicket',(req,res)=>{
     const sess = req.session.email;
     const search = req.query.search;
@@ -103,6 +125,21 @@ router.get('/searchAgentTicket',(req,res)=>{
         }
         else{
             res.status(200).json({error:false, data: ticket})
+        }
+    });
+
+});
+
+router.get('/searchAgentList',(req,res)=>{
+    const sess = req.session.email;
+    const search = req.query.search;
+    console.log(search);
+    Agent.find({$or:[{Aname :{'$regex': search }},{ email : {'$regex': search  }}],'email':{'$ne' : sess}}).sort({Aname : -1}).exec(function(err,list){
+        if(!list){
+            res.status(400).json({error:true,message: "No List Found. Search Again!"})
+        }
+        else{
+            res.status(200).json({error:false, data: list})
         }
     });
 
@@ -169,6 +206,20 @@ router.get('/viewticket',(req,res)=>{
     })
 })
 
+router.get('/agentlist', async (req,res)=>{
+    const sess = req.session.email;
+    await Agent.find({'email' : {'$ne' : sess}}).sort({Aname : -1}).exec(function(err,list){
+        if(err){
+            res.status(400).json({error:true})
+            console.log(err)
+        }
+        else{
+            res.status(200).json({error:false, data: list});
+        }
+    })
+})
+
+
 router.get('/Aviewticket',(req,res)=>{
     const sess = req.session.email;
     
@@ -228,8 +279,12 @@ router.get('/Agentprofile',(req,res)=>{
     })
 })
 
-router.post('/createTicket',(req,res)=>{
-    const {T_name,T_type,T_desc} = req.body;
+router.post('/createTicket',upload.single('myFile'),(req,res)=>{
+    console.log(req.file);
+    const T_name = req.body.T_name;
+    const T_type = req.body.T_type;
+    const T_desc = req.body.T_desc;
+    const fileName = req.file ? req.file.filename : null;
     const sess = req.session.email;
 
     if(!T_name || !T_type || !T_desc){
@@ -246,6 +301,7 @@ router.post('/createTicket',(req,res)=>{
                 T_name : T_name,
                 T_type : T_type,
                 T_desc : T_desc,
+                T_image : req.file ? fileName : null,
                 T_status : "Pending",
                 Agent_id : minVal,
                 T_email : sess,
@@ -272,10 +328,90 @@ router.post('/createTicket',(req,res)=>{
 }
 
 })
+//Foward Ticket
+router.get('/forwardticket/:email/:id',(req,res)=>{
+    const id = req.params.id;
+    console.log(id)
+    const Aemail = req.params.email;
+    console.log(Aemail)
+    const sess = req.session.email;
+    Ticket.findOne({_id : id}).exec(function(err,ticket){
+        if(err){
+            res.status(400).json({error:true})
+            console.log(err)
+        }
+        else{
+            Ticket.updateOne({Agent_id : ticket.Agent_id},{$set:{
+                Agent_id : Aemail,
+            }}).exec(function(err,agent){
+                if(err){
+                    res.status(400).json({error:true})
+                    console.log(err)
+                }else{
+                    Agent.findOne({email : sess}).exec(function(err,sessionagent){
+                        if(err){
+                            res.status(400).json({error:true})
+                            console.log(err)
+                        }
+                        else{  Agent.updateOne({email : sess},{$set:{
+                                T_pending : sessionagent.T_pending - 1,
+                        }}).exec();
+                        }})
+                          Agent.findOne({email : Aemail}).exec(function(err,newagent){
+                            if(err){
+                                res.status(400).json({error:true})
+                                console.log(err)
+                            }
+                            else{  Agent.updateOne({email: Aemail},{$set:{
+                                    T_pending : newagent.T_pending + 1,
+                            }}).exec();
+                            }})
+                    res.status(200).json({error:false,message: "Ticket Forwarded"});
+            }
+        })
+    }})
+})
 
+
+router.get('/completeticket/:id', (req,res)=>{
+    const id = req.params.id;
+
+    const sess = req.session.email;
+    Ticket.findOne({_id : id}).exec(function(err,ticket){
+        if(err){
+            res.status(400).json({error:true})
+            console.log(err)
+        }
+        else{
+            Ticket.updateOne({_id : ticket._id},{$set:{
+               T_status : "Done",
+            }}).exec(function  (err,agent){
+                if(err){
+                    res.status(400).json({error:true})
+                    console.log(err)
+                }else{
+                     Agent.findOne({email : sess}).exec(function(err,results){
+                        if(err){
+                            res.status(400).json({error:true})
+                            console.log(err)
+                        }
+                        else{Agent.updateOne({email : sess},{$set:{
+                              T_pending : results.T_pending - 1,
+              
+                              T_completed : results.T_completed + 1,
+                      
+                            }}).exec();
+                        }})
+                    res.status(200).json({error:false,message: "You Completed Your Task!"});
+            }
+        })
+    }})
+})
 //Reponse Text
-router.post('/response',(req,res)=>{
+router.post('/response', async (req,res)=>{
     const {T_id,Sender_email,R_text} = req.body;
+    const countR = await Agent.countDocuments({email : Sender_email});
+    console.log(countR);
     if(!R_text){
         res.status(400).json({error:true,message : "Enter some text!" });
     }else{
@@ -286,6 +422,11 @@ router.post('/response',(req,res)=>{
                     R_text : R_text,
                 })
                 newResponse.save();
+                if(countR > 0){
+                    Ticket.updateOne({_id : T_id},{$set:{
+                        T_status : "In Progress",
+                    }}).exec();
+                }
                 res.status(200).json({error:false,message: "Response Added"});
             
             }
@@ -295,7 +436,7 @@ router.post('/response',(req,res)=>{
 router.post('/register',(req,res)=>{
     const {name,phone,email,password} = req.body;
     if(!name || !email || !password || !phone){
-        res.status(400).json({error:true,message : "Please fill all fields!" });
+        res.status(400).json({error:true,message : "Please fill all the fields!" });
     }else if(phone.length < 10){
         res.status(400).json({error:true,message : "Mobile No. should contain 10 digits" });
     }else if(password.length < 6){
@@ -324,10 +465,10 @@ router.post('/login', function(req, res) {
 
     const {email,password} = req.body;
     if(!email || !password){
-        res.status(400).json({error:true,message : "Please fill in fields!" });}
+        res.status(400).json({error:true,message : "Please fill all the fields!" });}
     else{User.findOne({ email: email }, function(err, user) {
       if (!user) {
-            res.status(400).json({error:true,message: "Email doesn't exist"});
+            res.status(400).json({error:true,message: "Email Id doesn't exist"});
 
       } else {
         if (password === user.password) {
@@ -346,10 +487,10 @@ router.post('/login', function(req, res) {
 
     const {email,password} = req.body;
     if(!email || !password){
-        res.status(400).json({error:true,message : "Please fill in fields!" });}
+        res.status(400).json({error:true,message : "Please fill all the fields!" });}
     else{Agent.findOne({ email: email }, function(err, user) {
       if (!user) {
-            res.status(400).json({error:true,message: "Email doesn't exist"});
+            res.status(400).json({error:true,message: "Email Id doesn't exist"});
 
       } else {
         if (password === user.password) {
@@ -369,10 +510,10 @@ router.post('/forgotpassword', function(req, res) {
 
     const {email} = req.body;
     if(!email){
-        res.status(400).json({error:true,message : "Please enter Email!" });}
+        res.status(400).json({error:true,message : "Please enter your Email!" });}
     else{User.findOne({ email: email }, function(err, user) {
       if (!user) {
-            res.status(400).json({error:true,message: "Email doesn't exist"});
+            res.status(400).json({error:true,message: "Email Id doesn't exist"});
 
       } else {
          const email = user.email;
@@ -388,7 +529,7 @@ router.post('/forgotpassword', function(req, res) {
               console.log(error);
             } else {
               console.log('Email sent: ' + info.response);
-              res.status(200).json({error:false,message: "Password has been sent to your email.Please login again"});
+              res.status(200).json({error:false,message: "Password has been sent to your email. Please login again"});
             }
           });
         }

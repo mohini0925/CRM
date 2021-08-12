@@ -27,6 +27,9 @@ let TicketSchema = new mongoose.Schema({
     T_date:{
             type: Date,
             default: Date.now
+    },
+    T_image:{
+        type : String
     }
 });
 
